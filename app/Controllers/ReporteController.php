@@ -118,4 +118,89 @@ class ReporteController extends BaseController
             return "Error generando el PDF: " . $e->getMessage();
         }
     }
+    // Buscar por nombre y generar PDF
+    public function buscarSuperheroPdf()
+    {
+        $nombre = $this->request->getGet('nombre') ?? '';
+
+        if (trim($nombre) === '') {
+            return 'Debe ingresar un nombre de superhéroe';
+        }
+
+        $db = \Config\Database::connect();
+
+        $sql = "
+            SELECT 
+                SH.id,
+                SH.superhero_name,
+                SH.full_name,
+                PB.publisher_name,
+                AL.alignment,
+                AT.attribute_name,
+                HA.attribute_value
+            FROM superhero SH
+            LEFT JOIN publisher PB ON SH.publisher_id = PB.id
+            LEFT JOIN alignment AL ON SH.alignment_id = AL.id
+            LEFT JOIN hero_attribute HA ON SH.id = HA.hero_id
+            LEFT JOIN attribute AT ON HA.attribute_id = AT.id
+            WHERE SH.superhero_name LIKE ?
+            ORDER BY SH.superhero_name
+        ";
+
+        $rows = $db->query($sql, ['%' . $nombre . '%'])->getResultArray();
+
+        if (empty($rows)) {
+            return "No se encontró ningún superhéroe con el nombre: " . esc($nombre);
+        }
+
+        $data = [
+            "rows"   => $rows,
+            "nombre" => $nombre,
+            "estilos" => view('reportes/estilos')
+        ];
+
+        $html = view('reportes/reporte_superhero', $data);
+
+        try {
+            $html2pdf = new Html2Pdf('P', 'A4', 'es', true, 'UTF-8', [10, 10, 10, 10]);
+            $html2pdf->writeHTML($html);
+
+            $this->response->setHeader('Content-Type', 'application/pdf');
+            $html2pdf->output("Superheroe_{$nombre}.pdf", 'I');
+            exit;
+        } catch (Html2PdfException $e) {
+            return "Error generando PDF: " . $e->getMessage();
+        }
+    }
+
+    // Mostrar formulario de búsqueda de superhéroe
+public function formularioBuscar()
+{
+    return view('reportes/buscar_superhero');
+}
+// Devolver coincidencias para autocompletar
+public function autocomplete()
+{
+    $term = $this->request->getGet('term') ?? '';
+
+    $db = \Config\Database::connect();
+
+    $sql = "
+        SELECT superhero_name 
+        FROM superhero 
+        WHERE superhero_name LIKE ? 
+        ORDER BY superhero_name 
+        LIMIT 10
+    ";
+
+    $results = $db->query($sql, ['%' . $term . '%'])->getResultArray();
+
+    $names = [];
+    foreach ($results as $row) {
+        $names[] = $row['superhero_name'];
+    }
+
+    return $this->response->setJSON($names);
+}
+
 }
